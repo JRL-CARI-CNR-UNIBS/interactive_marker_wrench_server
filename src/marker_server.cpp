@@ -28,31 +28,29 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-#include <rclcpp/rclcpp.hpp>
-#include <geometry_msgs/msg/twist.hpp>
-#include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/pose.hpp>
+#include <geometry_msgs/msg/wrench.hpp>
+#include <geometry_msgs/msg/wrench_stamped.hpp>
+#include <interactive_markers/interactive_marker_server.hpp>
+#include <rclcpp/rclcpp.hpp>
+#include <tf2/utils.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <visualization_msgs/msg/interactive_marker.hpp>
 #include <visualization_msgs/msg/interactive_marker_control.hpp>
 #include <visualization_msgs/msg/marker.hpp>
-#include <interactive_markers/interactive_marker_server.hpp>
-#include <tf2/utils.h>
-#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 
 #include <algorithm>
 #include <string>
 #include <map>
 #include <memory>
 
-namespace interactive_marker_twist_server
-{
+namespace interactive_marker_wrench_server {
 
-class TwistServerNode : public rclcpp::Node
-{
+class WrenchServerNode : public rclcpp::Node {
 public:
-  TwistServerNode();
+  WrenchServerNode();
 
-  ~TwistServerNode() = default;
+  ~WrenchServerNode() = default;
 
   void processFeedback(
     const visualization_msgs::msg::InteractiveMarkerFeedback::ConstSharedPtr &
@@ -61,52 +59,52 @@ public:
 private:
   void getParameters();
   void createInteractiveMarkers();
-  void stampAndPublish(geometry_msgs::msg::Twist &msg);
+  void stampAndPublish(geometry_msgs::msg::Wrench& msg);
 
-  rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr vel_pub;
-  rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr vel_stamped_pub;
+  rclcpp::Publisher<geometry_msgs::msg::Wrench>::SharedPtr wrench_pub;
+  rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr wrench_stamped_pub;
   std::unique_ptr<interactive_markers::InteractiveMarkerServer> server;
 
   std::map<std::string, double> linear_drive_scale_map;
-  std::map<std::string, double> max_positive_linear_velocity_map;
-  std::map<std::string, double> max_negative_linear_velocity_map;
+  std::map<std::string, double> max_positive_linear_force_map;
+  std::map<std::string, double> max_negative_linear_force_map;
 
   bool use_stamped_msgs;
 
   double angular_drive_scale;
-  double max_angular_velocity;
+  double max_angular_force;
   double marker_size_scale;
 
+  std::string topic;
   std::string link_name;
   std::string robot_name;
-};  // class TwistServerNode
+}; // class WrenchServerNode
 
-TwistServerNode::TwistServerNode()
-: rclcpp::Node("twist_server_node", rclcpp::NodeOptions().
-    allow_undeclared_parameters(true).automatically_declare_parameters_from_overrides(true)), server
-    (std::make_unique<interactive_markers::InteractiveMarkerServer>(
-      "twist_server",
-      get_node_base_interface(), get_node_clock_interface(), get_node_logging_interface(),
-      get_node_topics_interface(), get_node_services_interface()))
-{
+WrenchServerNode::WrenchServerNode()
+    : rclcpp::Node("wrench_server_node",
+                   rclcpp::NodeOptions().allow_undeclared_parameters(true).automatically_declare_parameters_from_overrides(true)),
+      server(std::make_unique<interactive_markers::InteractiveMarkerServer>(
+        "wrench_server", get_node_base_interface(), get_node_clock_interface(), get_node_logging_interface(),
+        get_node_topics_interface(), get_node_services_interface())) {
   getParameters();
   if (use_stamped_msgs)
   {
-    vel_stamped_pub = create_publisher<geometry_msgs::msg::TwistStamped>("cmd_vel", 1);
+    wrench_stamped_pub = create_publisher<geometry_msgs::msg::WrenchStamped>("", 1);
   } 
   else
   {
-    vel_pub = create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 1);
+    wrench_pub = create_publisher<geometry_msgs::msg::Wrench>(topic, 1);
   }
   createInteractiveMarkers();
-  RCLCPP_INFO(get_logger(), "[interactive_marker_twist_server] Initialized.");
+  RCLCPP_INFO(get_logger(), "[interactive_marker_wrench_server] Initialized.");
 }
 
-void TwistServerNode::getParameters()
-{
+void WrenchServerNode::getParameters() {
   rclcpp::Parameter link_name_param;
   rclcpp::Parameter robot_name_param;
   rclcpp::Parameter use_stamped_msgs_param;
+
+  topic = this->get_parameter_or("topic", std::string("wrench_cmd"));
 
   if (this->get_parameter("link_name", link_name_param))
   {
@@ -138,27 +136,26 @@ void TwistServerNode::getParameters()
   // Ensure parameters are loaded correctly, otherwise, manually set values for linear config
   if (this->get_parameters("linear_scale", linear_drive_scale_map))
   {
-    this->get_parameters("max_positive_linear_velocity", max_positive_linear_velocity_map);
-    this->get_parameters("max_negative_linear_velocity", max_negative_linear_velocity_map);
+    this->get_parameters("max_positive_linear_force", max_positive_linear_force_map);
+    this->get_parameters("max_negative_linear_force", max_negative_linear_force_map);
   }
   else
   {
     linear_drive_scale_map["x"] = 1.0;
-    max_positive_linear_velocity_map["x"] = 1.0;
-    max_negative_linear_velocity_map["x"] = -1.0;
+    max_positive_linear_force_map["x"] = 1.0;
+    max_negative_linear_force_map["x"] = -1.0;
   }
 
   angular_drive_scale = 2.2;
-  max_angular_velocity = 2.2;
+  max_angular_force = 2.2;
   marker_size_scale = 1.0;
 }
 
-void TwistServerNode::createInteractiveMarkers()
-{
+void WrenchServerNode::createInteractiveMarkers() {
   visualization_msgs::msg::InteractiveMarker interactive_marker;
   interactive_marker.header.frame_id = link_name;
-  interactive_marker.name = robot_name + "_twist_marker";
-  interactive_marker.description = "twist controller for " + robot_name;
+  interactive_marker.name = robot_name + "_wrench_marker";
+  interactive_marker.description = "wrench controller for " + robot_name;
   interactive_marker.scale = marker_size_scale;
 
   visualization_msgs::msg::InteractiveMarkerControl control;
@@ -207,76 +204,69 @@ void TwistServerNode::createInteractiveMarkers()
   interactive_marker.controls.push_back(control);
 
   server->insert(interactive_marker);
-  server->setCallback(
-    interactive_marker.name, std::bind(
-      &TwistServerNode::processFeedback, this,
-      std::placeholders::_1));
+  server->setCallback(interactive_marker.name, std::bind(&WrenchServerNode::processFeedback, this, std::placeholders::_1));
   server->applyChanges();
 }
 
-void TwistServerNode::processFeedback(
-  const
-  visualization_msgs::msg::InteractiveMarkerFeedback::ConstSharedPtr & feedback)
-{
-  geometry_msgs::msg::Twist vel_msg;
+void WrenchServerNode::processFeedback(const visualization_msgs::msg::InteractiveMarkerFeedback::ConstSharedPtr& feedback) {
+  geometry_msgs::msg::Wrench wrench_msg;
 
   // Handle angular change (yaw is the only direction in which you can rotate)
   double yaw = tf2::getYaw(feedback->pose.orientation);
-  vel_msg.angular.z = angular_drive_scale * yaw;
-  vel_msg.angular.z = std::min(vel_msg.angular.z, max_angular_velocity);
-  vel_msg.angular.z = std::max(vel_msg.angular.z, -max_angular_velocity);
+  wrench_msg.torque.z = angular_drive_scale * yaw;
+  wrench_msg.torque.z = std::min(wrench_msg.torque.z, max_angular_force);
+  wrench_msg.torque.z = std::max(wrench_msg.torque.z, -max_angular_force);
 
   if (linear_drive_scale_map.find("x") != linear_drive_scale_map.end())
   {
-    vel_msg.linear.x = linear_drive_scale_map["x"] * feedback->pose.position.x;
-    vel_msg.linear.x = std::min(vel_msg.linear.x, max_positive_linear_velocity_map["x"]);
-    vel_msg.linear.x = std::max(vel_msg.linear.x, max_negative_linear_velocity_map["x"]);
+    wrench_msg.force.x = linear_drive_scale_map["x"] * feedback->pose.position.x;
+    wrench_msg.force.x = std::min(wrench_msg.force.x, max_positive_linear_force_map["x"]);
+    wrench_msg.force.x = std::max(wrench_msg.force.x, max_negative_linear_force_map["x"]);
   }
 
   if (linear_drive_scale_map.find("y") != linear_drive_scale_map.end())
   {
-    vel_msg.linear.y = linear_drive_scale_map["y"] * feedback->pose.position.y;
-    vel_msg.linear.y = std::min(vel_msg.linear.y, max_positive_linear_velocity_map["y"]);
-    vel_msg.linear.y = std::max(vel_msg.linear.y, max_negative_linear_velocity_map["y"]);
+    wrench_msg.force.y = linear_drive_scale_map["y"] * feedback->pose.position.y;
+    wrench_msg.force.y = std::min(wrench_msg.force.y, max_positive_linear_force_map["y"]);
+    wrench_msg.force.y = std::max(wrench_msg.force.y, max_negative_linear_force_map["y"]);
   }
 
   if (linear_drive_scale_map.find("z") != linear_drive_scale_map.end())
   {
-    vel_msg.linear.z = linear_drive_scale_map["z"] * feedback->pose.position.z;
-    vel_msg.linear.z = std::min(vel_msg.linear.z, max_positive_linear_velocity_map["z"]);
-    vel_msg.linear.z = std::max(vel_msg.linear.z, max_negative_linear_velocity_map["z"]);
+    wrench_msg.force.z = linear_drive_scale_map["z"] * feedback->pose.position.z;
+    wrench_msg.force.z = std::min(wrench_msg.force.z, max_positive_linear_force_map["z"]);
+    wrench_msg.force.z = std::max(wrench_msg.force.z, max_negative_linear_force_map["z"]);
   }
 
   if (use_stamped_msgs)
   {
-    stampAndPublish(vel_msg);
+    stampAndPublish(wrench_msg);
   }
   else
   {
-    vel_pub->publish(vel_msg);
+    wrench_pub->publish(wrench_msg);
   }
 
   // Make the marker snap back to robot
-  server->setPose(robot_name + "_twist_marker", geometry_msgs::msg::Pose());
+  server->setPose(robot_name + "_wrench_marker", geometry_msgs::msg::Pose());
   server->applyChanges();
 }
 
-void TwistServerNode::stampAndPublish(geometry_msgs::msg::Twist &msg)
-{
-  geometry_msgs::msg::TwistStamped stamped_msg;
+void WrenchServerNode::stampAndPublish(geometry_msgs::msg::Wrench& msg) {
+  geometry_msgs::msg::WrenchStamped stamped_msg;
 
-  stamped_msg.twist = msg;
+  stamped_msg.wrench = msg;
   stamped_msg.header.stamp = this->get_clock()->now();
 
-  vel_stamped_pub->publish(stamped_msg);
+  wrench_stamped_pub->publish(stamped_msg);
 }
 
-}  // namespace interactive_marker_twist_server
+} // namespace interactive_marker_wrench_server
 
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  auto node = std::make_shared<interactive_marker_twist_server::TwistServerNode>();
+  auto node = std::make_shared<interactive_marker_wrench_server::WrenchServerNode>();
   rclcpp::executors::SingleThreadedExecutor executor;
   executor.add_node(node);
   executor.spin();

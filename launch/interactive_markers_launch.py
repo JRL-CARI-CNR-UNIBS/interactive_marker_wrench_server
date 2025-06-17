@@ -39,7 +39,7 @@ def generate_launch_description():
     # Get config type (i.e. linear, planar, or aerial) as argument
     config_arg = DeclareLaunchArgument(
         'config',
-        default_value='linear'
+        default_value='config'
     )
 
     # Append '.yaml' to config type argument to create file name (i.e. 'linear.yaml', 'planar
@@ -51,15 +51,15 @@ def generate_launch_description():
 
     # Generate path to config file
     config_file_path = PathJoinSubstitution(
-        [FindPackageShare('interactive_marker_twist_server'),
+        [FindPackageShare('interactive_marker_wrench_server'),
             'config',
             LaunchConfiguration('config_file')]
     )
 
-    node_interactive_marker_twist_server = Node(
-        package='interactive_marker_twist_server',
+    node_interactive_marker_wrench_server = Node(
+        package='interactive_marker_wrench_server',
         executable='marker_server',
-        name='twist_server_node',
+        name='wrench_server_node',
         parameters=[config_file_path],
         output='screen',
     )
@@ -67,6 +67,6 @@ def generate_launch_description():
     ld = LaunchDescription()
     ld.add_action(config_arg)
     ld.add_action(config_file)
-    ld.add_action(node_interactive_marker_twist_server)
+    ld.add_action(node_interactive_marker_wrench_server)
 
     return ld

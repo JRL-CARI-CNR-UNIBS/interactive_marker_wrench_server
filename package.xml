@@ -1,12 +1,10 @@
 <package format="2">
-  <name>interactive_marker_twist_server</name>
+  <name>interactive_marker_wrench_server</name>
   <version>2.1.2</version>
-  <description>Interactive control for generic Twist-based robots using interactive markers</description>
-  <maintainer email="mpurvis@clearpathrobotics.com">Mike Purvis</maintainer>
+  <description>Interactive control for generic Wrench-based robots using interactive markers</description>
+  <!--Maintainer of the original package-->
+<!--  <maintainer email="mpurvis@clearpathrobotics.com">Mike Purvis</maintainer> -->
   <license>BSD</license>
-
-  <url type="repository">https://github.com/ros-visualization/interactive_marker_twist_server</url>
-  <url type="bugtracker">https://github.com/ros-visualization/interactive_marker_twist_server/issues</url>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

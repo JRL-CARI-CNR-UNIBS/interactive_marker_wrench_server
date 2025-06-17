@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(interactive_marker_twist_server)
+project(interactive_marker_wrench_server)
 
 # Default to C++14
 if(NOT CMAKE_CXX_STANDARD)
