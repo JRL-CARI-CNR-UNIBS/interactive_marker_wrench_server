@@ -4,6 +4,7 @@
   <description>Interactive control for generic Wrench-based robots using interactive markers</description>
   <!--Maintainer of the original package-->
 <!--  <maintainer email="mpurvis@clearpathrobotics.com">Mike Purvis</maintainer> -->
+  <maintainer email="roberto.fausti@stiima.cnr.it">Roberto Fausti</maintainer>
   <license>BSD</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
