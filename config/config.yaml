@@ -3,14 +3,15 @@ wrench_server_node:
     use_stamped_msg: false
     topic: /test/gazebo_ros_force
     linear_scale:
-      x: 1.0
-      y: 1.0
-      z: 1.0
+      x: 5.0
+      y: 5.0
+      z: 5.0
     max_positive_linear_force:
-      x: 1.0
-      y: 1.0
-      z: 1.0
+      x: 15.0
+      y: 15.0
+      z: 15.0
     max_negative_linear_force:
-      x: -1.0
-      y: -1.0
-      z: -1.0
+      x: -15.0
+      y: -15.0
+      z: -15.0
+    link_name: "wrist_right_ft_sensor_link"
