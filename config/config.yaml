@@ -1,17 +1,30 @@
 wrench_server_node:
   ros__parameters:
     use_stamped_msg: false
-    topic: /test/gazebo_ros_force
-    linear_scale:
+    topic:
+    # - /left/gazebo_ros_force
+    - /right/gazebo_ros_force
+    # - /wrench_in_map
+    scale:
       x: 5.0
       y: 5.0
       z: 5.0
-    max_positive_linear_force:
+      roll: 5.0
+      pitch: 5.0
+      yaw: 5.0
+    max_positive_force:
       x: 15.0
       y: 15.0
       z: 15.0
-    max_negative_linear_force:
+      roll: 10.0
+      pitch: 10.0
+      yaw: 10.0
+    max_negative_force:
       x: -15.0
       y: -15.0
       z: -15.0
+      roll:  -10.0
+      pitch: -10.0
+      yaw:   -10.0
+    # link_name: "shared"
     link_name: "wrist_right_ft_sensor_link"

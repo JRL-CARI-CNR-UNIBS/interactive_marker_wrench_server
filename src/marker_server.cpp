@@ -61,23 +61,31 @@ private:
   void createInteractiveMarkers();
   void stampAndPublish(geometry_msgs::msg::Wrench& msg);
 
-  rclcpp::Publisher<geometry_msgs::msg::Wrench>::SharedPtr wrench_pub;
+  std::vector<rclcpp::Publisher<geometry_msgs::msg::Wrench>::SharedPtr> wrench_pub;
   rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr wrench_stamped_pub;
   std::unique_ptr<interactive_markers::InteractiveMarkerServer> server;
 
-  std::map<std::string, double> linear_drive_scale_map;
-  std::map<std::string, double> max_positive_linear_force_map;
-  std::map<std::string, double> max_negative_linear_force_map;
+  std::map<std::string, double> drive_scale_map;
+  std::map<std::string, double> max_positive_force_map;
+  std::map<std::string, double> max_negative_force_map;
 
   bool use_stamped_msgs;
 
-  double angular_drive_scale;
-  double max_angular_force;
   double marker_size_scale;
 
-  std::string topic;
+  std::vector<std::string> topics;
   std::string link_name;
   std::string robot_name;
+  struct Axis {
+    constexpr static char LINEAR_X[] = "x";
+    constexpr static char LINEAR_Y[] = "y";
+    constexpr static char LINEAR_Z[] = "z";
+    constexpr static char ANGULAR_X[] = "roll";
+    constexpr static char ANGULAR_Y[] = "pitch";
+    constexpr static char ANGULAR_Z[] = "yaw";
+  };
+
+
 }; // class WrenchServerNode
 
 WrenchServerNode::WrenchServerNode()
@@ -87,13 +95,12 @@ WrenchServerNode::WrenchServerNode()
         "wrench_server", get_node_base_interface(), get_node_clock_interface(), get_node_logging_interface(),
         get_node_topics_interface(), get_node_services_interface())) {
   getParameters();
-  if (use_stamped_msgs)
-  {
-    wrench_stamped_pub = create_publisher<geometry_msgs::msg::WrenchStamped>("", 1);
-  } 
-  else
-  {
-    wrench_pub = create_publisher<geometry_msgs::msg::Wrench>(topic, 1);
+  for (const auto& topic : topics) {
+    if (use_stamped_msgs) {
+      wrench_stamped_pub = create_publisher<geometry_msgs::msg::WrenchStamped>("", 1);
+    } else {
+      wrench_pub.push_back(create_publisher<geometry_msgs::msg::Wrench>(topic, 1));
+    }
   }
   createInteractiveMarkers();
   RCLCPP_INFO(get_logger(), "[interactive_marker_wrench_server] Initialized.");
@@ -104,7 +111,7 @@ void WrenchServerNode::getParameters() {
   rclcpp::Parameter robot_name_param;
   rclcpp::Parameter use_stamped_msgs_param;
 
-  topic = this->get_parameter_or("topic", std::string("wrench_cmd"));
+  topics = this->get_parameter("topic").as_string_array();
 
   if (this->get_parameter("link_name", link_name_param))
   {
@@ -134,21 +141,16 @@ void WrenchServerNode::getParameters() {
   }
 
   // Ensure parameters are loaded correctly, otherwise, manually set values for linear config
-  if (this->get_parameters("linear_scale", linear_drive_scale_map))
-  {
-    this->get_parameters("max_positive_linear_force", max_positive_linear_force_map);
-    this->get_parameters("max_negative_linear_force", max_negative_linear_force_map);
+  std::map<std::string, double> t_scale;
+  if (this->get_parameters("scale", drive_scale_map)) {
+    this->get_parameters("max_positive_force", max_positive_force_map);
+    this->get_parameters("max_negative_force", max_negative_force_map);
+  } else {
+    drive_scale_map[Axis::LINEAR_X] = 1.0;
+    max_positive_force_map[Axis::LINEAR_X] = 1.0;
+    max_negative_force_map[Axis::LINEAR_X] = -1.0;
   }
-  else
-  {
-    linear_drive_scale_map["x"] = 1.0;
-    max_positive_linear_force_map["x"] = 1.0;
-    max_negative_linear_force_map["x"] = -1.0;
-  }
-
-  angular_drive_scale = 2.2;
-  max_angular_force = 2.2;
-  marker_size_scale = 1.0;
+  marker_size_scale = 0.7;
 }
 
 void WrenchServerNode::createInteractiveMarkers() {
@@ -162,8 +164,8 @@ void WrenchServerNode::createInteractiveMarkers() {
 
   control.orientation_mode = visualization_msgs::msg::InteractiveMarkerControl::FIXED;
 
-  if (linear_drive_scale_map.find("x") != linear_drive_scale_map.end())
-  {
+  bool xyz = true;
+  if (drive_scale_map.find(Axis::LINEAR_X) != drive_scale_map.end()) {
     control.orientation.w = 1;
     control.orientation.x = 1;
     control.orientation.y = 0;
@@ -171,10 +173,11 @@ void WrenchServerNode::createInteractiveMarkers() {
     control.name = "move_x";
     control.interaction_mode = visualization_msgs::msg::InteractiveMarkerControl::MOVE_AXIS;
     interactive_marker.controls.push_back(control);
+  } else {
+    xyz &= false;
   }
 
-  if (linear_drive_scale_map.find("y") != linear_drive_scale_map.end())
-  {
+  if (drive_scale_map.find(Axis::LINEAR_Y) != drive_scale_map.end()) {
     control.orientation.w = 1;
     control.orientation.x = 0;
     control.orientation.y = 0;
@@ -182,10 +185,11 @@ void WrenchServerNode::createInteractiveMarkers() {
     control.name = "move_y";
     control.interaction_mode = visualization_msgs::msg::InteractiveMarkerControl::MOVE_AXIS;
     interactive_marker.controls.push_back(control);
+  } else {
+    xyz &= false;
   }
 
-  if (linear_drive_scale_map.find("z") != linear_drive_scale_map.end())
-  {
+  if (drive_scale_map.find(Axis::LINEAR_Z) != drive_scale_map.end()) {
     control.orientation.w = 1;
     control.orientation.x = 0;
     control.orientation.y = 1;
@@ -193,15 +197,57 @@ void WrenchServerNode::createInteractiveMarkers() {
     control.name = "move_z";
     control.interaction_mode = visualization_msgs::msg::InteractiveMarkerControl::MOVE_AXIS;
     interactive_marker.controls.push_back(control);
+  } else {
+    xyz &= false;
   }
 
-  control.orientation.w = 1;
-  control.orientation.x = 0;
-  control.orientation.y = 1;
-  control.orientation.z = 0;
-  control.name = "rotate_z";
-  control.interaction_mode = visualization_msgs::msg::InteractiveMarkerControl::ROTATE_AXIS;
-  interactive_marker.controls.push_back(control);
+  if (xyz) {
+    visualization_msgs::msg::InteractiveMarkerControl control_3d;
+    control_3d.name = "move_3d";
+    control_3d.interaction_mode = visualization_msgs::msg::InteractiveMarkerControl::MOVE_3D;
+    control_3d.always_visible = true;
+    visualization_msgs::msg::Marker marker;
+    marker.type = visualization_msgs::msg::Marker::Type::SPHERE;
+    marker.scale.x = interactive_marker.scale * 0.5;
+    marker.scale.y = interactive_marker.scale * 0.5;
+    marker.scale.z = interactive_marker.scale * 0.5;
+    marker.color.r = 0.0;
+    marker.color.g = 0.95;
+    marker.color.b = 0.95;
+    marker.color.a = 0.3;
+    control_3d.markers.push_back(marker);
+    interactive_marker.controls.push_back(control_3d);
+  }
+
+  if (drive_scale_map.find(Axis::ANGULAR_X) != drive_scale_map.end()) {
+    control.orientation.w = 1;
+    control.orientation.x = 1;
+    control.orientation.y = 0;
+    control.orientation.z = 0;
+    control.name = "rotate_x";
+    control.interaction_mode = visualization_msgs::msg::InteractiveMarkerControl::ROTATE_AXIS;
+    interactive_marker.controls.push_back(control);
+  }
+
+  if (drive_scale_map.find(Axis::ANGULAR_Y) != drive_scale_map.end()) {
+    control.orientation.w = 1;
+    control.orientation.x = 0;
+    control.orientation.y = 1;
+    control.orientation.z = 0;
+    control.name = "rotate_y";
+    control.interaction_mode = visualization_msgs::msg::InteractiveMarkerControl::ROTATE_AXIS;
+    interactive_marker.controls.push_back(control);
+  }
+
+  if (drive_scale_map.find(Axis::ANGULAR_Z) != drive_scale_map.end()) {
+    control.orientation.w = 1;
+    control.orientation.x = 0;
+    control.orientation.y = 0;
+    control.orientation.z = 1;
+    control.name = "rotate_z";
+    control.interaction_mode = visualization_msgs::msg::InteractiveMarkerControl::ROTATE_AXIS;
+    interactive_marker.controls.push_back(control);
+  }
 
   server->insert(interactive_marker);
   server->setCallback(interactive_marker.name, std::bind(&WrenchServerNode::processFeedback, this, std::placeholders::_1));
@@ -209,33 +255,45 @@ void WrenchServerNode::createInteractiveMarkers() {
 }
 
 void WrenchServerNode::processFeedback(const visualization_msgs::msg::InteractiveMarkerFeedback::ConstSharedPtr& feedback) {
-  geometry_msgs::msg::Wrench wrench_msg;
+  geometry_msgs::msg::Wrench wrench_msg(rosidl_runtime_cpp::MessageInitialization::ZERO);
 
-  // Handle angular change (yaw is the only direction in which you can rotate)
-  double yaw = tf2::getYaw(feedback->pose.orientation);
-  wrench_msg.torque.z = angular_drive_scale * yaw;
-  wrench_msg.torque.z = std::min(wrench_msg.torque.z, max_angular_force);
-  wrench_msg.torque.z = std::max(wrench_msg.torque.z, -max_angular_force);
+  if (feedback->event_type != visualization_msgs::msg::InteractiveMarkerFeedback::MOUSE_UP) {
+    // Handle angular change (yaw is the only direction in which you can rotate)
+    double yaw, pitch, roll;
+    tf2::getEulerYPR(feedback->pose.orientation, yaw, pitch, roll);
+    if (drive_scale_map.find(Axis::ANGULAR_X) != drive_scale_map.end()) {
+      wrench_msg.torque.x = drive_scale_map[Axis::ANGULAR_X] * roll;
+      wrench_msg.torque.x = std::min(wrench_msg.torque.x, max_positive_force_map[Axis::ANGULAR_X]);
+      wrench_msg.torque.x = std::max(wrench_msg.torque.x, max_negative_force_map[Axis::ANGULAR_X]);
+    }
+    if (drive_scale_map.find(Axis::ANGULAR_Y) != drive_scale_map.end()) {
+      wrench_msg.torque.y = drive_scale_map[Axis::ANGULAR_X] * pitch;
+      wrench_msg.torque.y = std::min(wrench_msg.torque.y, max_positive_force_map[Axis::ANGULAR_Y]);
+      wrench_msg.torque.y = std::max(wrench_msg.torque.y, max_negative_force_map[Axis::ANGULAR_Y]);
+    }
+    if (drive_scale_map.find(Axis::ANGULAR_Z) != drive_scale_map.end()) {
+      wrench_msg.torque.z = drive_scale_map[Axis::ANGULAR_X] * yaw;
+      wrench_msg.torque.z = std::min(wrench_msg.torque.z, max_positive_force_map[Axis::ANGULAR_Z]);
+      wrench_msg.torque.z = std::max(wrench_msg.torque.z, max_negative_force_map[Axis::ANGULAR_Z]);
+    }
 
-  if (linear_drive_scale_map.find("x") != linear_drive_scale_map.end())
-  {
-    wrench_msg.force.x = linear_drive_scale_map["x"] * feedback->pose.position.x;
-    wrench_msg.force.x = std::min(wrench_msg.force.x, max_positive_linear_force_map["x"]);
-    wrench_msg.force.x = std::max(wrench_msg.force.x, max_negative_linear_force_map["x"]);
-  }
+    if (drive_scale_map.find(Axis::LINEAR_X) != drive_scale_map.end()) {
+      wrench_msg.force.x = drive_scale_map[Axis::LINEAR_X] * feedback->pose.position.x;
+      wrench_msg.force.x = std::min(wrench_msg.force.x, max_positive_force_map[Axis::LINEAR_X]);
+      wrench_msg.force.x = std::max(wrench_msg.force.x, max_negative_force_map[Axis::LINEAR_X]);
+    }
 
-  if (linear_drive_scale_map.find("y") != linear_drive_scale_map.end())
-  {
-    wrench_msg.force.y = linear_drive_scale_map["y"] * feedback->pose.position.y;
-    wrench_msg.force.y = std::min(wrench_msg.force.y, max_positive_linear_force_map["y"]);
-    wrench_msg.force.y = std::max(wrench_msg.force.y, max_negative_linear_force_map["y"]);
-  }
+    if (drive_scale_map.find(Axis::LINEAR_Y) != drive_scale_map.end()) {
+      wrench_msg.force.y = drive_scale_map[Axis::LINEAR_Y] * feedback->pose.position.y;
+      wrench_msg.force.y = std::min(wrench_msg.force.y, max_positive_force_map[Axis::LINEAR_Y]);
+      wrench_msg.force.y = std::max(wrench_msg.force.y, max_negative_force_map[Axis::LINEAR_Y]);
+    }
 
-  if (linear_drive_scale_map.find("z") != linear_drive_scale_map.end())
-  {
-    wrench_msg.force.z = linear_drive_scale_map["z"] * feedback->pose.position.z;
-    wrench_msg.force.z = std::min(wrench_msg.force.z, max_positive_linear_force_map["z"]);
-    wrench_msg.force.z = std::max(wrench_msg.force.z, max_negative_linear_force_map["z"]);
+    if (drive_scale_map.find(Axis::LINEAR_Z) != drive_scale_map.end()) {
+      wrench_msg.force.z = drive_scale_map[Axis::LINEAR_Z] * feedback->pose.position.z;
+      wrench_msg.force.z = std::min(wrench_msg.force.z, max_positive_force_map[Axis::LINEAR_Z]);
+      wrench_msg.force.z = std::max(wrench_msg.force.z, max_negative_force_map[Axis::LINEAR_Z]);
+    }
   }
 
   if (use_stamped_msgs)
@@ -244,7 +302,9 @@ void WrenchServerNode::processFeedback(const visualization_msgs::msg::Interactiv
   }
   else
   {
-    wrench_pub->publish(wrench_msg);
+    for (auto& p : wrench_pub) {
+      p->publish(wrench_msg);
+    }
   }
 
   // Make the marker snap back to robot
